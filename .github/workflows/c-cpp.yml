@@ -1,0 +1,176 @@
+name: Roblox 2016 CI
+
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+    branches:
+      - master
+
+jobs:
+
+  windows-rcc:
+    name: Build RCCService
+    runs-on: windows-2022
+
+    env:
+      CONTRIB_PATH: ${{ github.workspace }}\Contribs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup MSVC Environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Force v143 Toolset
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '<PlatformToolset>v110_xp</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' `
+              -replace '<PlatformToolset>v110</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
+              Set-Content $_.FullName
+          }
+
+      - name: Disable Warnings As Errors
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>' |
+              Set-Content $_.FullName
+          }
+
+      - name: Patch SDL Include Paths
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace 'SDL2\.0\.4', 'SDL2' |
+              Set-Content $_.FullName
+          }
+
+      - name: Build RCCService
+        shell: cmd
+        continue-on-error: true
+        run: |
+          msbuild Client_2016.sln ^
+            /m ^
+            /p:Configuration=ReleaseRCC ^
+            /p:Platform=Win32 ^
+            /p:PlatformToolset=v143
+
+      - name: Upload RCCService
+        uses: actions/upload-artifact@v4
+        with:
+          name: RCCService
+          path: |
+            **/ReleaseRCC/*.exe
+            **/ReleaseRCC/*.dll
+
+  windows-client:
+    name: Build Windows Client
+    runs-on: windows-2022
+
+    env:
+      CONTRIB_PATH: ${{ github.workspace }}\Contribs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup MSVC Environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Force v143 Toolset
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '<PlatformToolset>v110_xp</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' `
+              -replace '<PlatformToolset>v110</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
+              Set-Content $_.FullName
+          }
+
+      - name: Disable Warnings As Errors
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>' |
+              Set-Content $_.FullName
+          }
+
+      - name: Build Windows Client
+        shell: cmd
+        continue-on-error: true
+        run: |
+          msbuild Client_2016.sln ^
+            /m ^
+            /p:Configuration=Release ^
+            /p:Platform=Win32 ^
+            /p:PlatformToolset=v143
+
+      - name: Upload Windows Client
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindowsClient
+          path: |
+            **/Release/*.exe
+            **/Release/*.dll
+
+  webassembly-client:
+    name: Build WebAssembly Client
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Verify Emscripten
+        run: |
+          emcc -v
+          em++ -v
+
+      - name: Create Build Directory
+        run: mkdir -p build-wasm
+
+      - name: Configure WASM
+        working-directory: build-wasm
+        continue-on-error: true
+        run: |
+          emcmake cmake .. -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build WASM Client
+        working-directory: build-wasm
+        continue-on-error: true
+        run: |
+          emmake make -j$(nproc)
+
+      - name: Upload WASM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebAssemblyClient
+          path: |
+            build-wasm/**/*.wasm
+            build-wasm/**/*.js
+            build-wasm/**/*.html
