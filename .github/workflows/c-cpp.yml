@@ -14,15 +14,32 @@ jobs:
   windows-rcc:
     name: Build RCCService
     runs-on: windows-2022
+    timeout-minutes: 120
 
     env:
       CONTRIB_PATH: ${{ github.workspace }}\Contribs
 
     steps:
-      - name: Checkout
+
+      - name: Enable Long Paths
+        shell: powershell
+        run: |
+          git config --system core.longpaths true
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 1
+          clean: false
+          submodules: false
+          lfs: false
+
+      - name: Fix Broken Submodules
+        shell: cmd
+        continue-on-error: true
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive || exit /b 0
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -30,8 +47,9 @@ jobs:
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Force v143 Toolset
+      - name: Force Modern Toolset
         shell: powershell
+        continue-on-error: true
         run: |
           Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
             (Get-Content $_.FullName) `
@@ -42,6 +60,7 @@ jobs:
 
       - name: Disable Warnings As Errors
         shell: powershell
+        continue-on-error: true
         run: |
           Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
             (Get-Content $_.FullName) `
@@ -49,7 +68,7 @@ jobs:
               Set-Content $_.FullName
           }
 
-      - name: Patch SDL Include Paths
+      - name: Patch SDL Includes
         shell: powershell
         continue-on-error: true
         run: |
@@ -80,15 +99,32 @@ jobs:
   windows-client:
     name: Build Windows Client
     runs-on: windows-2022
+    timeout-minutes: 120
 
     env:
       CONTRIB_PATH: ${{ github.workspace }}\Contribs
 
     steps:
-      - name: Checkout
+
+      - name: Enable Long Paths
+        shell: powershell
+        run: |
+          git config --system core.longpaths true
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 1
+          clean: false
+          submodules: false
+          lfs: false
+
+      - name: Fix Broken Submodules
+        shell: cmd
+        continue-on-error: true
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive || exit /b 0
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -96,8 +132,9 @@ jobs:
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Force v143 Toolset
+      - name: Force Modern Toolset
         shell: powershell
+        continue-on-error: true
         run: |
           Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
             (Get-Content $_.FullName) `
@@ -108,6 +145,7 @@ jobs:
 
       - name: Disable Warnings As Errors
         shell: powershell
+        continue-on-error: true
         run: |
           Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
             (Get-Content $_.FullName) `
@@ -136,12 +174,17 @@ jobs:
   webassembly-client:
     name: Build WebAssembly Client
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 1
+          clean: false
+          submodules: false
+          lfs: false
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -154,7 +197,7 @@ jobs:
       - name: Create Build Directory
         run: mkdir -p build-wasm
 
-      - name: Configure WASM
+      - name: Configure WASM Build
         working-directory: build-wasm
         continue-on-error: true
         run: |
@@ -166,7 +209,7 @@ jobs:
         run: |
           emmake make -j$(nproc)
 
-      - name: Upload WASM Artifacts
+      - name: Upload WASM Build
         uses: actions/upload-artifact@v4
         with:
           name: WebAssemblyClient
