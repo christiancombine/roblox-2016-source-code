@@ -11,10 +11,10 @@ on:
 
 jobs:
 
-  windows-rcc:
-    name: Build RCCService
+  windows-client:
+    name: Build RobloxPlayerBeta
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       CONTRIB_PATH: ${{ github.workspace }}\Contribs
@@ -34,7 +34,7 @@ jobs:
           submodules: false
           lfs: false
 
-      - name: Fix Broken Submodules
+      - name: Fix Submodules
         shell: cmd
         continue-on-error: true
         run: |
@@ -47,7 +47,7 @@ jobs:
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Force Modern Toolset
+      - name: Force v143 Toolset
         shell: powershell
         continue-on-error: true
         run: |
@@ -78,28 +78,50 @@ jobs:
               Set-Content $_.FullName
           }
 
-      - name: Build RCCService
+      - name: Build RobloxPlayerBeta
         shell: cmd
         continue-on-error: true
         run: |
           msbuild Client_2016.sln ^
+            /t:WindowsClient ^
             /m ^
-            /p:Configuration=ReleaseRCC ^
+            /p:Configuration=Release ^
             /p:Platform=Win32 ^
             /p:PlatformToolset=v143
 
-      - name: Upload RCCService
+      - name: Prepare Client Package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+
+          Get-ChildItem -Recurse -Filter RobloxPlayerBeta.exe |
+            Copy-Item -Destination package -Force
+
+          Get-ChildItem -Recurse -Filter *.dll |
+            Copy-Item -Destination package -Force
+
+          Get-ChildItem -Recurse -Filter *.pdb |
+            Copy-Item -Destination package -Force
+
+          Get-ChildItem -Recurse -Directory |
+            Where-Object { $_.Name -match "content|shaders|PlatformContent|ExtraContent" } |
+            Copy-Item -Destination package -Recurse -Force
+
+      - name: Create Client ZIP
+        shell: powershell
+        run: |
+          Compress-Archive -Path package\* -DestinationPath RobloxPlayerBeta-Windows.zip
+
+      - name: Upload Client ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: RCCService
-          path: |
-            **/ReleaseRCC/*.exe
-            **/ReleaseRCC/*.dll
+          name: RobloxPlayerBeta-Windows
+          path: RobloxPlayerBeta-Windows.zip
 
-  windows-client:
-    name: Build Windows Client
+  windows-rcc:
+    name: Build RCCService
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       CONTRIB_PATH: ${{ github.workspace }}\Contribs
@@ -119,7 +141,7 @@ jobs:
           submodules: false
           lfs: false
 
-      - name: Fix Broken Submodules
+      - name: Fix Submodules
         shell: cmd
         continue-on-error: true
         run: |
@@ -132,7 +154,7 @@ jobs:
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Force Modern Toolset
+      - name: Force v143 Toolset
         shell: powershell
         continue-on-error: true
         run: |
@@ -153,28 +175,43 @@ jobs:
               Set-Content $_.FullName
           }
 
-      - name: Build Windows Client
+      - name: Build RCCService
         shell: cmd
         continue-on-error: true
         run: |
           msbuild Client_2016.sln ^
+            /t:RCCService ^
             /m ^
-            /p:Configuration=Release ^
+            /p:Configuration=ReleaseRCC ^
             /p:Platform=Win32 ^
             /p:PlatformToolset=v143
 
-      - name: Upload Windows Client
+      - name: Prepare RCC Package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path rccpackage
+
+          Get-ChildItem -Recurse -Filter RCCService.exe |
+            Copy-Item -Destination rccpackage -Force
+
+          Get-ChildItem -Recurse -Filter *.dll |
+            Copy-Item -Destination rccpackage -Force
+
+      - name: Create RCC ZIP
+        shell: powershell
+        run: |
+          Compress-Archive -Path rccpackage\* -DestinationPath RCCService-Windows.zip
+
+      - name: Upload RCC ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: WindowsClient
-          path: |
-            **/Release/*.exe
-            **/Release/*.dll
+          name: RCCService-Windows
+          path: RCCService-Windows.zip
 
   webassembly-client:
-    name: Build WebAssembly Client
+    name: Experimental WebAssembly Build
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
 
@@ -194,26 +231,30 @@ jobs:
           emcc -v
           em++ -v
 
-      - name: Create Build Directory
+      - name: Create WASM Build Folder
         run: mkdir -p build-wasm
 
-      - name: Configure WASM Build
+      - name: Attempt WebAssembly Build
         working-directory: build-wasm
         continue-on-error: true
         run: |
           emcmake cmake .. -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build WASM Client
-        working-directory: build-wasm
-        continue-on-error: true
-        run: |
           emmake make -j$(nproc)
 
-      - name: Upload WASM Build
+      - name: Package WASM Build
+        shell: bash
+        run: |
+          mkdir -p wasm-package
+
+          find build-wasm -name "*.wasm" -exec cp {} wasm-package/ \;
+          find build-wasm -name "*.js" -exec cp {} wasm-package/ \;
+          find build-wasm -name "*.html" -exec cp {} wasm-package/ \;
+
+          cd wasm-package
+          zip -r ../Roblox2016-WebAssembly.zip .
+
+      - name: Upload WASM ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: WebAssemblyClient
-          path: |
-            build-wasm/**/*.wasm
-            build-wasm/**/*.js
-            build-wasm/**/*.html
+          name: Roblox2016-WebAssembly
+          path: Roblox2016-WebAssembly.zip
