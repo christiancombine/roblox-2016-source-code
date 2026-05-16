@@ -2,19 +2,16 @@ name: Roblox 2016 CI
 
 on:
   push:
-    branches:
-      - master
-
+    branches: [ master ]
   pull_request:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
 
-  windows-client:
-    name: Build RobloxPlayerBeta
+  windows-build:
+    name: Build Client + RCC (Windows)
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 240
 
     env:
       CONTRIB_PATH: ${{ github.workspace }}\Contribs
@@ -23,18 +20,16 @@ jobs:
 
       - name: Enable Long Paths
         shell: powershell
-        run: |
-          git config --system core.longpaths true
+        run: git config --system core.longpaths true
 
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          clean: false
           submodules: false
           lfs: false
 
-      - name: Fix Submodules
+      - name: Init Submodules (safe)
         shell: cmd
         continue-on-error: true
         run: |
@@ -44,217 +39,76 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Setup MSVC Environment
+      - name: Setup VS2012 Toolset
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Force v143 Toolset
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace '<PlatformToolset>v110_xp</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' `
-              -replace '<PlatformToolset>v110</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
-              Set-Content $_.FullName
-          }
-
-      - name: Disable Warnings As Errors
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>' |
-              Set-Content $_.FullName
-          }
-
-      - name: Patch SDL Includes
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace 'SDL2\.0\.4', 'SDL2' |
-              Set-Content $_.FullName
-          }
-
-      - name: Build RobloxPlayerBeta
-        shell: cmd
-        continue-on-error: true
-        run: |
-          msbuild Client_2016.sln ^
-            /t:WindowsClient ^
-            /m ^
-            /p:Configuration=Release ^
-            /p:Platform=Win32 ^
-            /p:PlatformToolset=v143
-
-      - name: Prepare Client Package
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path package
-
-          Get-ChildItem -Recurse -Filter RobloxPlayerBeta.exe |
-            Copy-Item -Destination package -Force
-
-          Get-ChildItem -Recurse -Filter *.dll |
-            Copy-Item -Destination package -Force
-
-          Get-ChildItem -Recurse -Filter *.pdb |
-            Copy-Item -Destination package -Force
-
-          Get-ChildItem -Recurse -Directory |
-            Where-Object { $_.Name -match "content|shaders|PlatformContent|ExtraContent" } |
-            Copy-Item -Destination package -Recurse -Force
-
-      - name: Create Client ZIP
-        shell: powershell
-        run: |
-          Compress-Archive -Path package\* -DestinationPath RobloxPlayerBeta-Windows.zip
-
-      - name: Upload Client ZIP
-        uses: actions/upload-artifact@v4
         with:
-          name: RobloxPlayerBeta-Windows
-          path: RobloxPlayerBeta-Windows.zip
-
-  windows-rcc:
-    name: Build RCCService
-    runs-on: windows-2022
-    timeout-minutes: 180
-
-    env:
-      CONTRIB_PATH: ${{ github.workspace }}\Contribs
-
-    steps:
-
-      - name: Enable Long Paths
-        shell: powershell
-        run: |
-          git config --system core.longpaths true
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          clean: false
-          submodules: false
-          lfs: false
-
-      - name: Fix Submodules
-        shell: cmd
-        continue-on-error: true
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive || exit /b 0
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup MSVC Environment
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Force v143 Toolset
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace '<PlatformToolset>v110_xp</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' `
-              -replace '<PlatformToolset>v110</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' |
-              Set-Content $_.FullName
-          }
-
-      - name: Disable Warnings As Errors
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Get-ChildItem -Recurse *.vcxproj | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>' |
-              Set-Content $_.FullName
-          }
+          toolset: 11.0
 
       - name: Build RCCService
         shell: cmd
-        continue-on-error: true
         run: |
           msbuild Client_2016.sln ^
             /t:RCCService ^
             /m ^
             /p:Configuration=ReleaseRCC ^
             /p:Platform=Win32 ^
-            /p:PlatformToolset=v143
+            /p:PlatformToolset=v110_xp
 
-      - name: Prepare RCC Package
+      - name: Build Roblox Client
+        shell: cmd
+        run: |
+          msbuild Client_2016.sln ^
+            /t:WindowsClient ^
+            /m ^
+            /p:Configuration=Release ^
+            /p:Platform=Win32 ^
+            /p:PlatformToolset=v110_xp
+
+      # -----------------------------
+      # Install 7-Zip
+      # -----------------------------
+      - name: Install 7-Zip
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path rccpackage
+          choco install 7zip -y
 
-          Get-ChildItem -Recurse -Filter RCCService.exe |
-            Copy-Item -Destination rccpackage -Force
-
-          Get-ChildItem -Recurse -Filter *.dll |
-            Copy-Item -Destination rccpackage -Force
-
-      - name: Create RCC ZIP
+      # -----------------------------
+      # Package Client (FULL DIR)
+      # -----------------------------
+      - name: Package Client (7z)
         shell: powershell
         run: |
-          Compress-Archive -Path rccpackage\* -DestinationPath RCCService-Windows.zip
+          $out = "client_pkg"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-      - name: Upload RCC ZIP
+          robocopy . $out /E /XD .git obj Debug ReleaseRCC build-wasm Contribs
+
+          & "C:\Program Files\7-Zip\7z.exe" a RobloxPlayerBeta-Windows.7z $out\*
+
+      # -----------------------------
+      # Package RCC (FULL DIR)
+      # -----------------------------
+      - name: Package RCC (7z)
+        shell: powershell
+        run: |
+          $out = "rcc_pkg"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          robocopy . $out /E /XD .git obj Debug Release build-wasm Contribs
+
+          & "C:\Program Files\7-Zip\7z.exe" a RCCService-Windows.7z $out\*
+
+      # -----------------------------
+      # Upload artifacts
+      # -----------------------------
+      - name: Upload Client
+        uses: actions/upload-artifact@v4
+        with:
+          name: RobloxPlayerBeta-Windows
+          path: RobloxPlayerBeta-Windows.7z
+
+      - name: Upload RCC
         uses: actions/upload-artifact@v4
         with:
           name: RCCService-Windows
-          path: RCCService-Windows.zip
-
-  webassembly-client:
-    name: Experimental WebAssembly Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-
-    steps:
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          clean: false
-          submodules: false
-          lfs: false
-
-      - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-
-      - name: Verify Emscripten
-        run: |
-          emcc -v
-          em++ -v
-
-      - name: Create WASM Build Folder
-        run: mkdir -p build-wasm
-
-      - name: Attempt WebAssembly Build
-        working-directory: build-wasm
-        continue-on-error: true
-        run: |
-          emcmake cmake .. -DCMAKE_BUILD_TYPE=Release
-          emmake make -j$(nproc)
-
-      - name: Package WASM Build
-        shell: bash
-        run: |
-          mkdir -p wasm-package
-
-          find build-wasm -name "*.wasm" -exec cp {} wasm-package/ \;
-          find build-wasm -name "*.js" -exec cp {} wasm-package/ \;
-          find build-wasm -name "*.html" -exec cp {} wasm-package/ \;
-
-          cd wasm-package
-          zip -r ../Roblox2016-WebAssembly.zip .
-
-      - name: Upload WASM ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: Roblox2016-WebAssembly
-          path: Roblox2016-WebAssembly.zip
+          path: RCCService-Windows.7z
